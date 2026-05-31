@@ -45,7 +45,9 @@ public sealed class OneSignalPushNotifier : IPushNotifier
             };
 
             using var req = new HttpRequestMessage(HttpMethod.Post, "https://api.onesignal.com/notifications");
-            req.Headers.TryAddWithoutValidation("Authorization", $"Basic {_apiKey}");
+            // Current OneSignal REST API expects "Key <REST_API_KEY>" (the older
+            // "Basic <base64>" scheme is deprecated and the raw key isn't base64 here).
+            req.Headers.TryAddWithoutValidation("Authorization", $"Key {_apiKey}");
             req.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
 
             var resp = await _http.SendAsync(req, ct);

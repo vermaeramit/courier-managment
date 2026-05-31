@@ -10,16 +10,17 @@ namespace CourierMvp.Api.Services;
 public interface IShipmentService
 {
     Task<ShipmentDto> CreateAsync(CurrentUser caller, CreateShipmentRequest req, CancellationToken ct);
-    Task<ShipmentDto> GetByIdAsync(int id, CancellationToken ct);
+    Task<ShipmentDto> GetByIdAsync(CurrentUser caller, int id, CancellationToken ct);
     Task<PublicTrackingDto> TrackAsync(string trackingId, CancellationToken ct);
     Task<ShipmentDto> UpdateStatusAsync(CurrentUser caller, UpdateStatusRequest req, CancellationToken ct);
     Task<IReadOnlyList<ShipmentListItemDto>> ListAsync(
         CurrentUser caller, string? status, DateTime? from, DateTime? to, CancellationToken ct);
     Task<ShipmentDto> HandoffAsync(CurrentUser caller, HandoffRequest req, CancellationToken ct);
     Task<ShipmentDto> AssignRiderAsync(CurrentUser caller, AssignRiderRequest req, CancellationToken ct);
-    Task<IReadOnlyList<RiderStopDto>> RiderStopsAsync(int riderId, DateTime? forDate, CancellationToken ct);
+    Task<IReadOnlyList<RiderStopDto>> RiderStopsAsync(
+        CurrentUser caller, int riderId, DateTime? forDate, CancellationToken ct);
     Task<ShipmentDto> SubmitPodAsync(CurrentUser caller, PodSubmitRequest req, CancellationToken ct);
-    Task<string> IssueOtpAsync(int shipmentId, CancellationToken ct);
+    Task<string> IssueOtpAsync(CurrentUser caller, int shipmentId, CancellationToken ct);
 }
 
 public sealed class ShipmentService : IShipmentService
@@ -61,8 +62,11 @@ public sealed class ShipmentService : IShipmentService
         return created;
     }
 
-    public async Task<ShipmentDto> GetByIdAsync(int id, CancellationToken ct)
-        => await _repo.GetByIdAsync(id, ct) ?? throw new AppException("Shipment not found.");
+    public async Task<ShipmentDto> GetByIdAsync(CurrentUser caller, int id, CancellationToken ct)
+        // Branch-scoped: a non-admin only resolves shipments touching their branch
+        // (the proc filters them out otherwise), closing the by-id IDOR.
+        => await _repo.GetByIdAsync(id, caller.ScopeBranchId, ct)
+           ?? throw new AppException("Shipment not found.");
 
     public Task<PublicTrackingDto> TrackAsync(string trackingId, CancellationToken ct)
         => _repo.GetByTrackingAsync(trackingId, ct);
@@ -70,15 +74,20 @@ public sealed class ShipmentService : IShipmentService
     public async Task<ShipmentDto> UpdateStatusAsync(CurrentUser caller, UpdateStatusRequest req, CancellationToken ct)
     {
         var branchId = req.BranchId ?? caller.BranchId;
+        // Riders are additionally constrained to shipments assigned to them.
+        var riderScopeId = caller.Role == Roles.Rider ? caller.Id : (int?)null;
         var updated = await _repo.UpdateStatusAsync(new
         {
             req.ShipmentId,
             req.Status,
             BranchId = branchId,
-            req.RiderId,
+            // For a rider caller, stamp the event with their own id regardless of the request body.
+            RiderId = caller.Role == Roles.Rider ? caller.Id : req.RiderId,
             req.Latitude,
             req.Longitude,
-            req.Remarks
+            req.Remarks,
+            ScopeBranchId = caller.ScopeBranchId,
+            RiderScopeId = riderScopeId
         }, ct);
 
         if (updated is null) throw new AppException("Shipment not found.");
@@ -94,16 +103,26 @@ public sealed class ShipmentService : IShipmentService
 
     public async Task<ShipmentDto> HandoffAsync(CurrentUser caller, HandoffRequest req, CancellationToken ct)
     {
-        var updated = await _repo.HandoffAsync(req, ct)
-            ?? throw new AppException("Shipment not found.");
+        var updated = await _repo.HandoffAsync(new
+        {
+            req.ShipmentId,
+            req.ToBranchId,
+            req.Status,
+            req.Remarks,
+            ScopeBranchId = caller.ScopeBranchId
+        }, ct) ?? throw new AppException("Shipment not found.");
         NotifyStatusChange(updated);
         return updated;
     }
 
     public async Task<ShipmentDto> AssignRiderAsync(CurrentUser caller, AssignRiderRequest req, CancellationToken ct)
     {
-        var updated = await _repo.AssignRiderAsync(req, ct)
-            ?? throw new AppException("Shipment not found.");
+        var updated = await _repo.AssignRiderAsync(new
+        {
+            req.ShipmentId,
+            req.RiderId,
+            ScopeBranchId = caller.ScopeBranchId
+        }, ct) ?? throw new AppException("Shipment not found.");
 
         // Tell the rider they have a new assignment (best-effort).
         if (updated.AssignedRiderId is int riderId)
@@ -122,13 +141,16 @@ public sealed class ShipmentService : IShipmentService
         return updated;
     }
 
-    public Task<IReadOnlyList<RiderStopDto>> RiderStopsAsync(int riderId, DateTime? forDate, CancellationToken ct)
-        => _repo.RiderDailyStopsAsync(riderId, forDate, ct);
+    public Task<IReadOnlyList<RiderStopDto>> RiderStopsAsync(
+        CurrentUser caller, int riderId, DateTime? forDate, CancellationToken ct)
+        // Non-admin callers can only view stops for a rider in their own branch.
+        => _repo.RiderDailyStopsAsync(riderId, forDate, caller.ScopeBranchId, ct);
 
     public async Task<ShipmentDto> SubmitPodAsync(CurrentUser caller, PodSubmitRequest req, CancellationToken ct)
     {
         // Rider id is taken from the authenticated caller when they are a rider.
         var riderId = caller.Role == Roles.Rider ? caller.Id : req.RiderId;
+        var riderScopeId = caller.Role == Roles.Rider ? caller.Id : (int?)null;
         var updated = await _repo.SubmitPodAsync(new
         {
             req.ShipmentId,
@@ -139,7 +161,9 @@ public sealed class ShipmentService : IShipmentService
             req.Latitude,
             req.Longitude,
             req.CodCollected,
-            req.Remarks
+            req.Remarks,
+            ScopeBranchId = caller.ScopeBranchId,
+            RiderScopeId = riderScopeId
         }, ct);
 
         if (updated is null) throw new AppException("Shipment not found.");
@@ -148,17 +172,23 @@ public sealed class ShipmentService : IShipmentService
         return updated;
     }
 
-    public async Task<string> IssueOtpAsync(int shipmentId, CancellationToken ct)
+    public async Task<string> IssueOtpAsync(CurrentUser caller, int shipmentId, CancellationToken ct)
     {
-        // 6-digit OTP. Sent to receiver via the (stub) SMS channel.
-        var otp = Random.Shared.Next(100000, 999999).ToString();
+        // Resolve the shipment within the caller's branch scope first — this both
+        // authorizes the action and gives us the receiver phone. (Also closes the
+        // IDOR where any role could issue an OTP for any shipment id.)
+        var shipment = await _repo.GetByIdAsync(shipmentId, caller.ScopeBranchId, ct)
+            ?? throw new AppException("Shipment not found.");
+
+        // Cryptographically-strong 6-digit OTP (RandomNumberGenerator, not Random).
+        var otp = System.Security.Cryptography.RandomNumberGenerator
+            .GetInt32(0, 1_000_000).ToString("D6");
         await _repo.IssueOtpAsync(shipmentId, otp, ct);
 
-        var shipment = await _repo.GetByIdAsync(shipmentId, ct);
-        if (shipment is not null)
-            await _sms.SendStatusUpdateAsync(
-                shipment.ReceiverPhone, shipment.TrackingId,
-                $"Delivery OTP: {otp}", ct: ct);
+        // Sent to the receiver out-of-band via the (stub) SMS channel only.
+        await _sms.SendStatusUpdateAsync(
+            shipment.ReceiverPhone, shipment.TrackingId,
+            $"Delivery OTP: {otp}", ct: ct);
 
         return otp;
     }

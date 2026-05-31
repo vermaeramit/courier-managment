@@ -31,7 +31,10 @@ public sealed class AuthService : IAuthService
         if (user is null || user.Status != "Active")
             throw new AppException("Invalid credentials.");
 
-        var result = _hasher.VerifyHashedPassword(user.Email, user.PasswordHash, req.Password);
+        // The TUser argument is ignored by the default PasswordHasher (the salt is
+        // random and embedded in the hash), so we pass the same value used when
+        // hashing — string.Empty — to keep the two call sites consistent.
+        var result = _hasher.VerifyHashedPassword(string.Empty, user.PasswordHash, req.Password);
         if (result == PasswordVerificationResult.Failed)
             throw new AppException("Invalid credentials.");
 
@@ -45,7 +48,8 @@ public sealed class AuthService : IAuthService
         return new LoginResponse { Token = _jwt.CreateToken(dto), User = dto };
     }
 
-    // PBKDF2 via ASP.NET Core Identity's PasswordHasher. We key on email purely as the
-    // "user" salt input expected by the API; verification uses the same convention.
+    // PBKDF2 via ASP.NET Core Identity's PasswordHasher. The TUser argument is
+    // unused by the default hasher (PBKDF2 uses a random salt embedded in the
+    // output), so we pass string.Empty here and at the verification call site.
     public string HashPassword(string plaintext) => _hasher.HashPassword(string.Empty, plaintext);
 }

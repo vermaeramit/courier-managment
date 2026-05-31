@@ -1,4 +1,4 @@
-/// Plain data models mirroring the API response shapes the rider app consumes.
+// Plain data models mirroring the API response shapes the rider app consumes.
 
 class AuthUser {
   final int id;
@@ -8,10 +8,10 @@ class AuthUser {
   AuthUser({required this.id, required this.name, required this.role, this.branchId});
 
   factory AuthUser.fromJson(Map<String, dynamic> j) => AuthUser(
-        id: j['id'] as int,
-        name: j['name'] as String,
-        role: j['role'] as String,
-        branchId: j['branchId'] as int?,
+        id: (j['id'] as num).toInt(),
+        name: j['name'] as String? ?? '',
+        role: j['role'] as String? ?? '',
+        branchId: (j['branchId'] as num?)?.toInt(),
       );
 
   Map<String, dynamic> toJson() => {
@@ -50,10 +50,10 @@ class RiderStop {
   bool get isCod => paymentMode == 'COD';
 
   factory RiderStop.fromJson(Map<String, dynamic> j) => RiderStop(
-        id: j['id'] as int,
-        trackingId: j['trackingId'] as String,
-        status: j['status'] as String,
-        paymentMode: j['paymentMode'] as String,
+        id: (j['id'] as num).toInt(),
+        trackingId: j['trackingId'] as String? ?? '',
+        status: j['status'] as String? ?? '',
+        paymentMode: j['paymentMode'] as String? ?? 'Prepaid',
         codAmount: (j['codAmount'] as num?)?.toDouble() ?? 0,
         receiverName: j['receiverName'] as String? ?? '',
         receiverPhone: j['receiverPhone'] as String? ?? '',
@@ -67,11 +67,12 @@ class RiderStop {
 enum QueuedKind { statusUpdate, pod, cod }
 
 class QueuedAction {
-  final String id; // local uuid-ish
+  final String id; // local unique id; also sent to the API as an idempotency key
   final QueuedKind kind;
   final String path; // API path
   final Map<String, dynamic> body;
   final DateTime createdAt;
+  int attempts; // failed send attempts so far (mutable; used for poison-action capping)
 
   QueuedAction({
     required this.id,
@@ -79,6 +80,7 @@ class QueuedAction {
     required this.path,
     required this.body,
     required this.createdAt,
+    this.attempts = 0,
   });
 
   Map<String, dynamic> toJson() => {
@@ -87,6 +89,7 @@ class QueuedAction {
         'path': path,
         'body': body,
         'createdAt': createdAt.toIso8601String(),
+        'attempts': attempts,
       };
 
   factory QueuedAction.fromJson(Map<String, dynamic> j) => QueuedAction(
@@ -95,5 +98,6 @@ class QueuedAction {
         path: j['path'] as String,
         body: Map<String, dynamic>.from(j['body'] as Map),
         createdAt: DateTime.parse(j['createdAt'] as String),
+        attempts: (j['attempts'] as num?)?.toInt() ?? 0,
       );
 }

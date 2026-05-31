@@ -23,7 +23,7 @@ public sealed class CodController : ApiControllerBase
     [Authorize(Roles = $"{Roles.Admin},{Roles.BranchManager}")]
     [HttpPost("{shipmentId:int}/deposit")]
     public async Task<ActionResult<CodTransactionDto>> Deposit(int shipmentId, CancellationToken ct)
-        => Ok(await _service.MarkDepositedAsync(shipmentId, ct));
+        => Ok(await _service.MarkDepositedAsync(CurrentUser, shipmentId, ct));
 
     // Reconciliation per rider for a date range.
     [Authorize(Roles = $"{Roles.Admin},{Roles.BranchManager}")]

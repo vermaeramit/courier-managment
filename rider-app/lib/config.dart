@@ -1,5 +1,8 @@
-/// App configuration. Values are provided at build time via --dart-define so no
-/// secrets are hardcoded in source. Example:
+/// App configuration. Values are provided at build time via --dart-define instead
+/// of being committed to source. Note: --dart-define values ARE compiled into the
+/// binary and can be extracted from the APK/IPA — they are config, not secrets.
+/// The maps key in particular must be restricted by package name / SHA-1 (Android)
+/// and bundle id (iOS) on the provider side. Example:
 ///   flutter run \
 ///     --dart-define=API_BASE_URL=http://10.0.2.2:5080 \
 ///     --dart-define=ONESIGNAL_APP_ID=xxxx \

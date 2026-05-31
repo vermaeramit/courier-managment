@@ -1,0 +1,30 @@
+# ---- .NET (api) ----
+[Bb]in/
+[Oo]bj/
+*.user
+.vs/
+
+# ---- Node / Vite (web-admin) ----
+node_modules/
+dist/
+.env
+.env.local
+*.log
+
+# ---- Flutter (rider-app) ----
+# Generated platform folders + tooling; regenerate with `flutter create .`
+rider-app/android/
+rider-app/ios/
+rider-app/linux/
+rider-app/macos/
+rider-app/windows/
+rider-app/web/
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+pubspec.lock
+build/
+
+# ---- OS / editor ----
+.DS_Store
+Thumbs.db

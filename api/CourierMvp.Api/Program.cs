@@ -39,6 +39,20 @@ builder.Services.AddCors(o => o.AddDefaultPolicy(p =>
 // ---- JWT auth ----
 var jwt = builder.Configuration.GetSection("Jwt");
 var signingKey = jwt["SigningKey"] ?? throw new InvalidOperationException("Jwt:SigningKey missing.");
+
+// Fail fast rather than ever run with a guessable key. Outside Development we
+// refuse to start if the key is the committed placeholder or shorter than the
+// 256 bits HMAC-SHA256 needs.
+const string PlaceholderKey = "dev-only-signing-key-change-me-please-32+chars";
+if (!builder.Environment.IsDevelopment())
+{
+    if (signingKey == PlaceholderKey)
+        throw new InvalidOperationException(
+            "Jwt:SigningKey is still the dev placeholder. Set a real key via the Jwt__SigningKey environment variable.");
+    if (Encoding.UTF8.GetByteCount(signingKey) < 32)
+        throw new InvalidOperationException("Jwt:SigningKey must be at least 32 bytes (256 bits).");
+}
+
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {

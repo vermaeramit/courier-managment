@@ -12,7 +12,8 @@ dependencies:
     sdk: flutter
   collection: ^1.18.0                # firstOrNull and friends
   http: ^1.2.1
-  shared_preferences: ^2.2.3        # JWT + offline queue persistence
+  shared_preferences: ^2.2.3        # offline queue persistence (non-secret)
+  flutter_secure_storage: ^9.2.2    # JWT + user stored in Keystore/Keychain
   connectivity_plus: ^6.0.3         # detect connectivity for offline sync
   mobile_scanner: ^5.1.1            # barcode / QR scanning
   image_picker: ^1.1.2              # proof-of-delivery photo

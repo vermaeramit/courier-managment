@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { api, setToken, getToken } from "../api/client";
+import { api, setToken, getToken, setUnauthorizedHandler } from "../api/client";
 import type { LoginResponse, User } from "../api/types";
 
 interface AuthState {
@@ -22,17 +22,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (user && !getToken()) setUser(null);
   }, [user]);
 
+  function logout() {
+    setToken(null);
+    sessionStorage.removeItem(USER_KEY);
+    setUser(null);
+  }
+
+  // Let the API client force a logout on a 401 (expired/revoked token).
+  useEffect(() => {
+    setUnauthorizedHandler(logout);
+    return () => setUnauthorizedHandler(null);
+  }, []);
+
   async function login(email: string, password: string) {
     const res = await api.post<LoginResponse>("/api/auth/login", { email, password });
     setToken(res.token);
     sessionStorage.setItem(USER_KEY, JSON.stringify(res.user));
     setUser(res.user);
-  }
-
-  function logout() {
-    setToken(null);
-    sessionStorage.removeItem(USER_KEY);
-    setUser(null);
   }
 
   const value = useMemo(() => ({ user, login, logout }), [user]);
