@@ -1,0 +1,27 @@
+name: courier_rider
+description: Courier MVP — rider app (pickups, deliveries, scan, POD, COD, offline sync).
+publish_to: "none"
+version: 0.1.0+1
+
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+  flutter: ">=3.19.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  collection: ^1.18.0                # firstOrNull and friends
+  http: ^1.2.1
+  shared_preferences: ^2.2.3        # JWT + offline queue persistence
+  connectivity_plus: ^6.0.3         # detect connectivity for offline sync
+  mobile_scanner: ^5.1.1            # barcode / QR scanning
+  image_picker: ^1.1.2              # proof-of-delivery photo
+  geolocator: ^12.0.0               # capture last-known location on events
+  url_launcher: ^6.3.0              # open maps for navigation
+  onesignal_flutter: ^5.2.0         # push notifications
+
+dev_dependencies:
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
