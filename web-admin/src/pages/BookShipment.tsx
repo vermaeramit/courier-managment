@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import type { Branch, Shipment } from "../api/types";
 import { useAuth } from "../context/AuthContext";
+import ShipmentLabel from "../components/ShipmentLabel";
 
 const SERVICE_TYPES = ["Standard", "Express", "SameDay"];
 const PAYMENT_MODES = ["Prepaid", "COD"];
@@ -140,17 +141,9 @@ export default function BookShipment() {
       {created && (
         <div className="card">
           <h3>Booked ✓ — {created.trackingId}</h3>
-          <div className="label-print">
-            <div><strong>COURIER LABEL</strong></div>
-            <div>Tracking: {created.trackingId}</div>
-            <div>Invoice: {created.invoiceNumber}</div>
-            <div>Barcode: *{created.barcodeValue}*</div>
-            <div>{created.originBranchCode} → {created.destBranchCode}</div>
-            <div>To: {created.receiverName}, {created.receiverPincode}</div>
-            <div>{created.serviceType} · {created.paymentMode}{created.paymentMode === "COD" ? ` · ₹${created.codAmount}` : ""}</div>
-          </div>
+          <ShipmentLabel s={created} />
           <p style={{ marginTop: 8 }}>
-            <button className="secondary" onClick={() => window.print()}>Print label</button>
+            <button className="secondary no-print" onClick={() => window.print()}>Print label</button>
           </p>
         </div>
       )}

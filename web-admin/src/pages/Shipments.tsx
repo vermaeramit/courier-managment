@@ -37,7 +37,7 @@ export default function Shipments() {
             <thead>
               <tr>
                 <th>Tracking</th><th>Route</th><th>Receiver</th><th>Service</th>
-                <th>Payment</th><th>Rider</th><th>Status</th><th>Created</th>
+                <th>Payment</th><th>Rider</th><th>Status</th><th>Created</th><th>Label</th>
               </tr>
             </thead>
             <tbody>
@@ -51,9 +51,10 @@ export default function Shipments() {
                   <td>{s.assignedRiderName ?? <span className="muted">—</span>}</td>
                   <td><span className="badge">{s.status}</span></td>
                   <td className="muted">{new Date(s.createdAt).toLocaleString()}</td>
+                  <td><Link to={`/shipments/${s.id}?print=1`} title="Open & print the label with barcode">🖨 Print</Link></td>
                 </tr>
               ))}
-              {rows.length === 0 && <tr><td colSpan={8} className="muted">No shipments.</td></tr>}
+              {rows.length === 0 && <tr><td colSpan={9} className="muted">No shipments.</td></tr>}
             </tbody>
           </table>
         )}

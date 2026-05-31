@@ -42,4 +42,16 @@ th { color: var(--muted); font-weight: 600; }
 .timeline li { padding: 8px 0 8px 16px; border-left: 2px solid var(--border); position: relative; }
 .timeline li::before { content: ""; position: absolute; left: -6px; top: 12px; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); }
 .grid-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
-.label-print { border: 1px dashed var(--border); padding: 16px; font-family: monospace; }
+.label-print { border: 1px dashed var(--border); padding: 16px; font-family: monospace; max-width: 360px; }
+.label-print .barcode svg { width: 100%; height: auto; }
+
+/* When printing, show only the courier label (hide app chrome, forms, timeline).
+   We use visibility (not display:none) so the label's ancestors don't collapse it,
+   then collapse the app container's height so no trailing blank pages print. */
+@media print {
+  body * { visibility: hidden; }
+  .printable, .printable * { visibility: visible; }
+  .printable { position: absolute; left: 0; top: 0; border: none; padding: 0; }
+  .no-print { display: none !important; }
+  .app { height: 0 !important; min-height: 0 !important; overflow: hidden !important; }
+}

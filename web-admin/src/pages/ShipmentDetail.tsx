@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import { SHIPMENT_STATUSES, type PublicTracking, type Shipment } from "../api/types";
+import ShipmentLabel from "../components/ShipmentLabel";
 
 export default function ShipmentDetail() {
   const { id } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [shipment, setShipment] = useState<Shipment | null>(null);
   const [tracking, setTracking] = useState<PublicTracking | null>(null);
   const [newStatus, setNewStatus] = useState("");
@@ -26,6 +28,15 @@ export default function ShipmentDetail() {
   }
 
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [id]);
+
+  // Auto-open the print dialog when arrived via the list's "Print" action (?print=1),
+  // then strip the flag so a refresh doesn't reprint.
+  useEffect(() => {
+    if (shipment && searchParams.get("print") === "1") {
+      setSearchParams({}, { replace: true });
+      setTimeout(() => window.print(), 300);
+    }
+  }, [shipment, searchParams, setSearchParams]);
 
   async function updateStatus() {
     if (!shipment) return;
@@ -63,6 +74,14 @@ export default function ShipmentDetail() {
           <div className="field"><label>Sender</label><div>{shipment.senderName}, {shipment.senderPhone}<br />{shipment.senderAddress} ({shipment.senderPincode})</div></div>
           <div className="field"><label>Receiver</label><div>{shipment.receiverName}, {shipment.receiverPhone}<br />{shipment.receiverAddress} ({shipment.receiverPincode})</div></div>
         </div>
+      </div>
+
+      <div className="card">
+        <h3 className="no-print">Label</h3>
+        <ShipmentLabel s={shipment} />
+        <p style={{ marginTop: 8 }} className="no-print">
+          <button className="secondary" onClick={() => window.print()}>Print label</button>
+        </p>
       </div>
 
       <div className="card">
