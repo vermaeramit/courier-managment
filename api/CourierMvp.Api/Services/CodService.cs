@@ -9,7 +9,7 @@ namespace CourierMvp.Api.Services;
 public interface ICodService
 {
     Task<CodTransactionDto> RecordCollectionAsync(CurrentUser caller, RecordCodRequest req, CancellationToken ct);
-    Task<CodTransactionDto> MarkDepositedAsync(int shipmentId, CancellationToken ct);
+    Task<CodTransactionDto> MarkDepositedAsync(CurrentUser caller, int shipmentId, CancellationToken ct);
     Task<IReadOnlyList<CodReconRiderDto>> ReconByRiderAsync(
         CurrentUser caller, DateTime from, DateTime to, CancellationToken ct);
     Task<IReadOnlyList<CodReconBranchDto>> ReconByBranchAsync(
@@ -29,13 +29,14 @@ public sealed class CodService : ICodService
         {
             req.ShipmentId,
             RiderId = riderId,
-            req.AmountCollected
+            req.AmountCollected,
+            ScopeBranchId = caller.ScopeBranchId
         }, ct);
         return row ?? throw new AppException("COD record not found for shipment.");
     }
 
-    public async Task<CodTransactionDto> MarkDepositedAsync(int shipmentId, CancellationToken ct)
-        => await _repo.MarkDepositedAsync(shipmentId, ct)
+    public async Task<CodTransactionDto> MarkDepositedAsync(CurrentUser caller, int shipmentId, CancellationToken ct)
+        => await _repo.MarkDepositedAsync(shipmentId, caller.ScopeBranchId, ct)
            ?? throw new AppException("COD record not found for shipment.");
 
     public Task<IReadOnlyList<CodReconRiderDto>> ReconByRiderAsync(

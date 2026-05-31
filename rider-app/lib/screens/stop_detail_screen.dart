@@ -32,6 +32,8 @@ class _StopDetailScreenState extends State<StopDetailScreen> {
   final _cod = TextEditingController();
   String? _message;
   bool _busy = false;
+  bool _resolving = false;   // deep-link lookup in progress
+  bool _notFound = false;    // deep-link shipment not in today's stops
 
   @override
   void initState() {
@@ -44,24 +46,46 @@ class _StopDetailScreenState extends State<StopDetailScreen> {
     }
   }
 
+  @override
+  void dispose() {
+    _otp.dispose();
+    _cod.dispose();
+    super.dispose();
+  }
+
   // For deep-link entry: try to find the stop in today's list.
   Future<void> _resolveByShipment() async {
+    setState(() {
+      _resolving = true;
+      _notFound = false;
+    });
     try {
       final stops = await Services.rider.dailyStops();
       final match = stops.where((s) => s.id == widget.shipmentId).firstOrNull;
+      if (!mounted) return;
       setState(() {
         _stop = match;
         _status = match?.status;
+        _notFound = match == null; // surface a clear state instead of hanging on "Loading…"
         if (match?.isCod == true) _cod.text = match!.codAmount.toStringAsFixed(2);
       });
-    } catch (_) {/* keep minimal screen */}
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _notFound = true);
+    } finally {
+      if (mounted) setState(() => _resolving = false);
+    }
   }
 
   Future<(double?, double?)> _location() async {
     try {
-      final perm = await Geolocator.checkPermission();
+      if (!await Geolocator.isLocationServiceEnabled()) return (null, null);
+      var perm = await Geolocator.checkPermission();
       if (perm == LocationPermission.denied) {
-        await Geolocator.requestPermission();
+        perm = await Geolocator.requestPermission();
+      }
+      if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) {
+        return (null, null); // proceed without a geo-tag rather than block delivery
       }
       final pos = await Geolocator.getCurrentPosition();
       return (pos.latitude, pos.longitude);
@@ -87,6 +111,7 @@ class _StopDetailScreenState extends State<StopDetailScreen> {
     setState(() => _busy = true);
     final (lat, lng) = await _location();
     await Services.rider.updateStatus(s.id, status, lat: lat, lng: lng);
+    if (!mounted) return;
     setState(() {
       _status = status;
       _busy = false;
@@ -99,7 +124,7 @@ class _StopDetailScreenState extends State<StopDetailScreen> {
   Future<void> _takePhoto() async {
     final picker = ImagePicker();
     final file = await picker.pickImage(source: ImageSource.camera, imageQuality: 60);
-    if (file != null) setState(() => _photoPath = file.path);
+    if (file != null && mounted) setState(() => _photoPath = file.path);
   }
 
   Future<void> _completeDelivery() async {
@@ -138,6 +163,7 @@ class _StopDetailScreenState extends State<StopDetailScreen> {
       remarks: 'Delivered by rider',
     );
 
+    if (!mounted) return;
     setState(() {
       _status = 'Delivered';
       _busy = false;
@@ -153,7 +179,30 @@ class _StopDetailScreenState extends State<StopDetailScreen> {
     return Scaffold(
       appBar: AppBar(title: Text(s?.trackingId ?? 'Shipment ${widget.shipmentId ?? ''}')),
       body: s == null
-          ? const Center(child: Text('Loading shipment…'))
+          ? _resolving
+              ? const Center(child: CircularProgressIndicator())
+              : Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          _notFound
+                              ? 'This shipment is not in your current stops.\nIt may already be delivered or reassigned.'
+                              : 'Could not load this shipment.',
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 12),
+                        OutlinedButton.icon(
+                          onPressed: _resolveByShipment,
+                          icon: const Icon(Icons.refresh),
+                          label: const Text('Retry'),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [

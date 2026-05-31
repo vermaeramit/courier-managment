@@ -10,9 +10,13 @@ import 'api_client.dart';
 /// signal, so every write goes through here.
 class SyncQueue extends ChangeNotifier {
   static const _key = 'offline_queue_v1';
+  // After this many server (5xx) failures a single action is parked/dropped so it
+  // can't block every later action in the FIFO forever (head-of-line blocking).
+  static const _maxAttempts = 8;
   final ApiClient api;
   final List<QueuedAction> _pending = [];
   bool _flushing = false;
+  bool _flushRequested = false; // set when flush() is called mid-flush
 
   SyncQueue(this.api) {
     // Auto-flush whenever connectivity returns.
@@ -30,10 +34,20 @@ class SyncQueue extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_key);
     if (raw != null) {
-      final list = (jsonDecode(raw) as List).cast<Map<String, dynamic>>();
-      _pending
-        ..clear()
-        ..addAll(list.map(QueuedAction.fromJson));
+      _pending.clear();
+      try {
+        final list = jsonDecode(raw) as List;
+        for (final item in list) {
+          try {
+            _pending.add(QueuedAction.fromJson((item as Map).cast<String, dynamic>()));
+          } catch (_) {
+            // Skip a single corrupt/forward-incompatible entry instead of losing
+            // the whole queue (e.g. a QueuedKind added by a newer app version).
+          }
+        }
+      } catch (_) {
+        // Unparseable blob -> start clean rather than crash on launch.
+      }
     }
     notifyListeners();
     flush(); // attempt to drain anything left from a previous session
@@ -58,36 +72,61 @@ class SyncQueue extends ChangeNotifier {
     return !result.contains(ConnectivityResult.none);
   }
 
-  /// Drain the queue oldest-first. Stops on the first failure so ordering is kept.
+  /// Drain the queue oldest-first to preserve per-shipment ordering.
+  ///
+  /// Failure handling:
+  ///  - 401  -> token is dead; stop now and resume after the rider re-logs in.
+  ///  - 4xx  -> the action is bad or a duplicate replay the server already applied
+  ///            (the procs are idempotent and reject replays), so drop it.
+  ///  - 5xx  -> count an attempt; keep & retry, but after [_maxAttempts] park the
+  ///            poison action so it can't block every later action forever.
+  ///  - network error -> keep & retry on the next connectivity change (no penalty,
+  ///            since being offline is expected and transient).
   Future<void> flush() async {
-    if (_flushing) return;
+    if (_flushing) {
+      _flushRequested = true; // coalesce: re-run once the current pass finishes
+      return;
+    }
     _flushing = true;
     try {
-      if (!await _isOnline()) return;
+      do {
+        _flushRequested = false;
+        if (!await _isOnline()) return;
 
-      while (_pending.isNotEmpty) {
-        final action = _pending.first;
-        try {
-          await api.post(action.path, action.body);
-          _pending.removeAt(0);
-          await _persist();
-          notifyListeners();
-        } on ApiException catch (e) {
-          // 4xx that isn't auth means the action is bad; drop it so the queue
-          // doesn't get stuck forever. Network/5xx -> keep & retry later.
-          if (e.statusCode >= 400 && e.statusCode < 500 && e.statusCode != 401) {
-            _pending.removeAt(0);
-            await _persist();
-            notifyListeners();
-          } else {
-            break; // retry later
+        while (_pending.isNotEmpty) {
+          final action = _pending.first;
+          try {
+            await api.post(action.path, action.body);
+            await _removeHead();
+          } on ApiException catch (e) {
+            if (e.statusCode == 401) {
+              return; // session ended; api_client has triggered logout
+            }
+            if (e.statusCode >= 400 && e.statusCode < 500) {
+              await _removeHead(); // bad/duplicate -> drop and continue
+            } else {
+              // 5xx: cap retries so one poison action can't stall the rest.
+              action.attempts++;
+              if (action.attempts >= _maxAttempts) {
+                await _removeHead(); // park/drop poison action
+              } else {
+                await _persist(); // persist the bumped attempt count
+                break; // retry the whole queue later
+              }
+            }
+          } catch (_) {
+            break; // network error -> retry later, keep ordering
           }
-        } catch (_) {
-          break; // network error -> retry later
         }
-      }
+      } while (_flushRequested);
     } finally {
       _flushing = false;
     }
+  }
+
+  Future<void> _removeHead() async {
+    _pending.removeAt(0);
+    await _persist();
+    notifyListeners();
   }
 }

@@ -9,10 +9,17 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final _email = TextEditingController(text: 'rider.roh@courier.test');
-  final _password = TextEditingController(text: 'Passw0rd!');
+  final _email = TextEditingController();
+  final _password = TextEditingController();
   String? _error;
   bool _busy = false;
+
+  @override
+  void dispose() {
+    _email.dispose();
+    _password.dispose();
+    super.dispose();
+  }
 
   Future<void> _submit() async {
     setState(() {

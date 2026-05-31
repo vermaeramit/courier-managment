@@ -22,6 +22,11 @@ export default function App() {
 
   const isStaff = user.role === "Admin" || user.role === "BranchManager";
 
+  // Route-level guard: staff-only pages redirect non-staff back to the dashboard
+  // instead of rendering a broken page that fires calls the API will 403. (Nav
+  // hiding alone is not access control — the URLs are still reachable.)
+  const staffOnly = (el: JSX.Element) => (isStaff ? el : <Navigate to="/" replace />);
+
   return (
     <div className="app">
       <aside className="sidebar">
@@ -42,11 +47,11 @@ export default function App() {
       <main className="main">
         <Routes>
           <Route path="/" element={<Dashboard />} />
-          <Route path="/book" element={<BookShipment />} />
+          <Route path="/book" element={staffOnly(<BookShipment />)} />
           <Route path="/shipments" element={<Shipments />} />
           <Route path="/shipments/:id" element={<ShipmentDetail />} />
-          <Route path="/assign" element={<RiderAssign />} />
-          <Route path="/cod" element={<CodReport />} />
+          <Route path="/assign" element={staffOnly(<RiderAssign />)} />
+          <Route path="/cod" element={staffOnly(<CodReport />)} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

@@ -13,6 +13,7 @@ export default function ShipmentDetail() {
   const [busy, setBusy] = useState(false);
 
   async function load() {
+    setError(null);   // clear any prior error so a successful reload restores the view
     try {
       const s = await api.get<Shipment>(`/api/shipments/${id}`);
       setShipment(s);
@@ -45,11 +46,11 @@ export default function ShipmentDetail() {
     }
   }
 
-  if (error) return <p className="error">{error}</p>;
-  if (!shipment) return <p className="muted">Loading…</p>;
+  if (!shipment) return error ? <p className="error">{error}</p> : <p className="muted">Loading…</p>;
 
   return (
     <>
+      {error && <p className="error">{error}</p>}
       <h2>{shipment.trackingId} <span className="badge">{shipment.status}</span></h2>
 
       <div className="card">

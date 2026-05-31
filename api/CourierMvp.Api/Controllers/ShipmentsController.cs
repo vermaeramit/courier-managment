@@ -12,7 +12,12 @@ namespace CourierMvp.Api.Controllers;
 public sealed class ShipmentsController : ApiControllerBase
 {
     private readonly IShipmentService _service;
-    public ShipmentsController(IShipmentService service) => _service = service;
+    private readonly IHostEnvironment _env;
+    public ShipmentsController(IShipmentService service, IHostEnvironment env)
+    {
+        _service = service;
+        _env = env;
+    }
 
     // Booking (admin / branch manager).
     [Authorize(Roles = $"{Roles.Admin},{Roles.BranchManager}")]
@@ -31,7 +36,7 @@ public sealed class ShipmentsController : ApiControllerBase
 
     [HttpGet("{id:int}")]
     public async Task<ActionResult<ShipmentDto>> Get(int id, CancellationToken ct)
-        => Ok(await _service.GetByIdAsync(id, ct));
+        => Ok(await _service.GetByIdAsync(CurrentUser, id, ct));
 
     // Status update + append tracking event.
     [HttpPost("{id:int}/status")]
@@ -57,10 +62,12 @@ public sealed class ShipmentsController : ApiControllerBase
     [HttpPost("{id:int}/issue-otp")]
     public async Task<ActionResult<object>> IssueOtp(int id, CancellationToken ct)
     {
-        var otp = await _service.IssueOtpAsync(id, ct);
-        // OTP returned in the body only as a dev convenience; in production it is
-        // delivered to the receiver out-of-band and NOT echoed here.
-        return Ok(new { shipmentId = id, otpIssued = true, devOtp = otp });
+        var otp = await _service.IssueOtpAsync(CurrentUser, id, ct);
+        // The OTP is delivered to the receiver out-of-band. It is echoed in the
+        // response ONLY in Development, never in any other environment.
+        return _env.IsDevelopment()
+            ? Ok(new { shipmentId = id, otpIssued = true, devOtp = otp })
+            : Ok(new { shipmentId = id, otpIssued = true });
     }
 
     // Proof of delivery (photo + optional OTP) + COD collection. Riders use this.

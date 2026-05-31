@@ -21,6 +21,6 @@ public sealed class RiderController : ApiControllerBase
         [FromQuery] int? riderId, [FromQuery] DateTime? forDate, CancellationToken ct)
     {
         var targetRider = CurrentUser.Role == Roles.Rider ? CurrentUser.Id : (riderId ?? CurrentUser.Id);
-        return Ok(await _service.RiderStopsAsync(targetRider, forDate, ct));
+        return Ok(await _service.RiderStopsAsync(CurrentUser, targetRider, forDate, ct));
     }
 }

@@ -3,8 +3,8 @@ import { useAuth } from "../context/AuthContext";
 
 export default function Login() {
   const { login } = useAuth();
-  const [email, setEmail] = useState("admin@courier.test");
-  const [password, setPassword] = useState("Passw0rd!");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -35,10 +35,12 @@ export default function Login() {
         </div>
         {error && <p className="error">{error}</p>}
         <button type="submit" disabled={busy}>{busy ? "Signing in…" : "Sign in"}</button>
-        <p className="muted" style={{ fontSize: 12, marginTop: 12 }}>
-          Seed accounts (password <code>Passw0rd!</code>): admin@courier.test,
-          manager.roh@courier.test, rider.roh@courier.test
-        </p>
+        {import.meta.env.DEV && (
+          <p className="muted" style={{ fontSize: 12, marginTop: 12 }}>
+            Dev seed accounts (password <code>Passw0rd!</code>): admin@courier.test,
+            manager.roh@courier.test, rider.roh@courier.test
+          </p>
+        )}
       </form>
     </div>
   );

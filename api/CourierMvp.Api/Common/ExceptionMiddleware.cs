@@ -34,9 +34,16 @@ public sealed class ExceptionMiddleware
         {
             await WriteAsync(ctx, StatusCodes.Status401Unauthorized, ex.Message);
         }
+        catch (SqlException ex) when (ex.Number == 2627 || ex.Number == 2601)
+        {
+            // Unique-key / duplicate violation -> 409 Conflict (not a 500). The raw
+            // SQL text is logged but not echoed to the client.
+            _log.LogWarning(ex, "Unique constraint violation.");
+            await WriteAsync(ctx, StatusCodes.Status409Conflict, "A record with the same unique value already exists.");
+        }
         catch (SqlException ex) when (ex.Number >= 50000)
         {
-            // Business-rule THROWs from stored procedures surface as clean 400s.
+            // Deliberate business-rule THROWs from stored procedures surface as clean 400s.
             await WriteAsync(ctx, StatusCodes.Status400BadRequest, ex.Message);
         }
         catch (Exception ex)

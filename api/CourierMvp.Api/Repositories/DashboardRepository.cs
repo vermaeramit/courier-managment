@@ -18,10 +18,10 @@ public sealed class DashboardRepository : IDashboardRepository
     public async Task<DashboardDto> DailyCountsAsync(int? scopeBranchId, DateTime? forDate, CancellationToken ct)
     {
         using var conn = await _factory.CreateOpenConnectionAsync(ct);
-        var dto = await conn.QuerySingleOrDefaultAsync<DashboardDto>(
+        var dto = await conn.QuerySingleOrDefaultAsync<DashboardDto>(new CommandDefinition(
             "usp_Dashboard_DailyCounts",
             new { ScopeBranchId = scopeBranchId, ForDate = forDate },
-            commandType: CommandType.StoredProcedure);
+            commandType: CommandType.StoredProcedure, cancellationToken: ct));
         return dto ?? new DashboardDto();
     }
 }

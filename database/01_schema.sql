@@ -20,7 +20,13 @@ GO
 
 /* ---------------------------------------------------------------------------
    Drop in reverse dependency order so the script can be re-run cleanly.
+   Break the circular Branches <-> Users FK first, otherwise neither table can
+   be dropped on a re-run against a populated database.
    --------------------------------------------------------------------------- */
+IF OBJECT_ID(N'FK_Branches_Manager', N'F') IS NOT NULL
+    ALTER TABLE dbo.Branches DROP CONSTRAINT FK_Branches_Manager;
+GO
+
 IF OBJECT_ID(N'dbo.ProofOfDelivery', N'U')   IS NOT NULL DROP TABLE dbo.ProofOfDelivery;
 IF OBJECT_ID(N'dbo.CodTransactions', N'U')   IS NOT NULL DROP TABLE dbo.CodTransactions;
 IF OBJECT_ID(N'dbo.TrackingEvents', N'U')    IS NOT NULL DROP TABLE dbo.TrackingEvents;
@@ -81,6 +87,7 @@ CREATE TABLE dbo.Users
     CreatedAt    DATETIME2(3)       NOT NULL CONSTRAINT DF_Users_CreatedAt DEFAULT (SYSUTCDATETIME()),
     CONSTRAINT UQ_Users_Email UNIQUE (Email),
     CONSTRAINT CK_Users_Role CHECK (Role IN (N'Admin', N'BranchManager', N'Rider')),
+    CONSTRAINT CK_Users_Status CHECK (Status IN (N'Active', N'Inactive')),
     CONSTRAINT FK_Users_Branch FOREIGN KEY (BranchId) REFERENCES dbo.Branches(Id)
 );
 GO
@@ -88,6 +95,9 @@ GO
 -- Now that Users exists, wire Branches.ManagerId -> Users.Id
 ALTER TABLE dbo.Branches
     ADD CONSTRAINT FK_Branches_Manager FOREIGN KEY (ManagerId) REFERENCES dbo.Users(Id);
+GO
+
+CREATE INDEX IX_Branches_Manager ON dbo.Branches (ManagerId);
 GO
 
 /* ---------------------------------------------------------------------------
@@ -131,6 +141,11 @@ CREATE TABLE dbo.Shipments
     CONSTRAINT UQ_Shipments_TrackingId UNIQUE (TrackingId),
     CONSTRAINT CK_Shipments_ServiceType CHECK (ServiceType IN (N'Standard', N'Express', N'SameDay')),
     CONSTRAINT CK_Shipments_PaymentMode CHECK (PaymentMode IN (N'Prepaid', N'COD')),
+    CONSTRAINT CK_Shipments_Weight CHECK (Weight >= 0),
+    -- COD shipments carry a positive amount; Prepaid must carry zero.
+    CONSTRAINT CK_Shipments_CodCoherent CHECK (
+        (PaymentMode = N'COD'     AND CodAmount >  0) OR
+        (PaymentMode = N'Prepaid' AND CodAmount = 0)),
     CONSTRAINT CK_Shipments_Status CHECK (Status IN
         (N'Booked', N'PickedUp', N'AtOriginHub', N'InTransit', N'AtDestinationHub',
          N'OutForDelivery', N'Delivered', N'Failed', N'RTO')),
@@ -144,7 +159,9 @@ GO
 
 CREATE INDEX IX_Shipments_OriginBranch ON dbo.Shipments (OriginBranchId, Status);
 CREATE INDEX IX_Shipments_DestBranch   ON dbo.Shipments (DestBranchId, Status);
+CREATE INDEX IX_Shipments_CurrentBranch ON dbo.Shipments (CurrentBranchId, Status);
 CREATE INDEX IX_Shipments_Rider        ON dbo.Shipments (AssignedRiderId, Status);
+CREATE INDEX IX_Shipments_CreatedBy    ON dbo.Shipments (CreatedBy);
 CREATE INDEX IX_Shipments_CreatedAt    ON dbo.Shipments (CreatedAt);
 GO
 
@@ -162,6 +179,9 @@ CREATE TABLE dbo.TrackingEvents
     Longitude   DECIMAL(9,6)         NULL,
     Remarks     NVARCHAR(500)        NULL,
     CreatedAt   DATETIME2(3)         NOT NULL CONSTRAINT DF_TrackingEvents_CreatedAt DEFAULT (SYSUTCDATETIME()),
+    CONSTRAINT CK_TrackingEvents_Status CHECK (Status IN
+        (N'Booked', N'PickedUp', N'AtOriginHub', N'InTransit', N'AtDestinationHub',
+         N'OutForDelivery', N'Delivered', N'Failed', N'RTO')),
     CONSTRAINT FK_TrackingEvents_Shipment FOREIGN KEY (ShipmentId) REFERENCES dbo.Shipments(Id),
     CONSTRAINT FK_TrackingEvents_Branch   FOREIGN KEY (BranchId)   REFERENCES dbo.Branches(Id),
     CONSTRAINT FK_TrackingEvents_Rider    FOREIGN KEY (RiderId)    REFERENCES dbo.Users(Id)
@@ -185,6 +205,9 @@ CREATE TABLE dbo.CodTransactions
     CollectedAt    DATETIME2(3)      NULL,
     DepositedAt    DATETIME2(3)      NULL,
     CONSTRAINT UQ_Cod_Shipment UNIQUE (ShipmentId),
+    CONSTRAINT CK_Cod_NonNegative CHECK (AmountExpected >= 0 AND AmountCollected >= 0),
+    -- Cash can only be marked deposited once it has actually been collected.
+    CONSTRAINT CK_Cod_DepositRequiresCollection CHECK (Deposited = 0 OR CollectedAt IS NOT NULL),
     CONSTRAINT FK_Cod_Shipment FOREIGN KEY (ShipmentId) REFERENCES dbo.Shipments(Id),
     CONSTRAINT FK_Cod_Rider    FOREIGN KEY (RiderId)    REFERENCES dbo.Users(Id)
 );
@@ -203,6 +226,7 @@ CREATE TABLE dbo.ProofOfDelivery
     Type        NVARCHAR(20)      NOT NULL,
     PhotoUrl    NVARCHAR(500)     NULL,
     Otp         NVARCHAR(10)      NULL,
+    ExpiresAt   DATETIME2(3)      NULL,    -- OTP validity window (NULL for non-OTP proof rows)
     DeliveredAt DATETIME2(3)      NOT NULL CONSTRAINT DF_Pod_DeliveredAt DEFAULT (SYSUTCDATETIME()),
     CONSTRAINT CK_Pod_Type CHECK (Type IN (N'Photo', N'OTP', N'Signature')),
     CONSTRAINT FK_Pod_Shipment FOREIGN KEY (ShipmentId) REFERENCES dbo.Shipments(Id)

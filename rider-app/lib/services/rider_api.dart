@@ -32,7 +32,10 @@ class RiderApi {
 
   // ---- Writes: queued for offline resilience ----
 
-  String _newId() => DateTime.now().microsecondsSinceEpoch.toString();
+  // Monotonic local id: timestamp plus a counter so two enqueues in the same
+  // microsecond can't collide.
+  static int _seq = 0;
+  String _newId() => '${DateTime.now().microsecondsSinceEpoch}-${_seq++}';
 
   Future<void> updateStatus(int shipmentId, String status,
       {double? lat, double? lng, String? remarks}) async {
